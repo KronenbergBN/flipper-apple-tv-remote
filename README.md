@@ -49,6 +49,15 @@ python3 tests/test_controls.py
 
 Output: `dist/apple_tv_remote.fap`. Tests require Clang and the installed SDK.
 
+## Related projects
+
+[Google TV Remote for Flipper Zero](https://github.com/cyberandy/flipper-google-tv-remote) by [cyberandy](https://github.com/cyberandy) adapts this project's Bluetooth setup and app structure for Chromecast with Google TV and adds Epson projector power control over infrared. See that project's README for supported devices, installation instructions and test results.
+
+## Contributors
+
+- **Hanns Kronenberg**: project direction, device testing and maintenance.
+- **OpenAI Codex**: AI-assisted development, debugging and documentation.
+
 ## References
 
 - https://github.com/flipperdevices/flipperzero-firmware/tree/1.4.3
