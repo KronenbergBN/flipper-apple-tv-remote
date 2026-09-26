@@ -1,8 +1,16 @@
 # Apple TV Remote for Flipper Zero
 
-A custom Bluetooth HID remote, developed with OpenAI Codex. Runs on official Flipper Zero firmware 1.4.3 / API 87.1. No infrared or line of sight needed. Independent project, not an official Apple or Flipper Devices app.
+A custom Apple TV remote for Flipper Zero, developed with OpenAI Codex. Connects over Bluetooth, so no infrared or line of sight is needed.
+
+**Runs on the standard, official Flipper Zero firmware — no custom firmware needed.** Built and tested with firmware **1.4.3 / API 87.1**.
+
+Independent project, not an official Apple or Flipper Devices app.
 
 [Download the app](https://github.com/KronenbergBN/flipper-apple-tv-remote/releases/latest) · [Source code](https://github.com/KronenbergBN/flipper-apple-tv-remote)
+
+![Apple TV remote on Flipper Zero: connected, with directional controls and an Actions menu](docs/images/apple-tv-remote.png)
+
+*Screenshot from the app running on a real Flipper Zero.*
 
 ## Install and pair
 
