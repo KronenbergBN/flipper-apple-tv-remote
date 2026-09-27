@@ -29,7 +29,7 @@ typedef struct { InputKey key; InputType type; } InputEvent;
 typedef struct {
     int lock, view_port;
     void* profile;
-    struct { bool connected, highlight, actions; uint8_t action; InputKey last_key; } screen;
+    struct { bool connected, highlight, actions, volume; uint8_t action; InputKey last_key; } screen;
     uint32_t highlight_until;
 } Remote;
 #define FuriWaitForever 0
@@ -47,95 +47,102 @@ static bool remote_pulse(Remote* app, uint16_t code, bool consumer) {
 """
 code += handler
 code += r"""
-int main(void) {
-    Remote app = {.profile=(void*)1, .screen.connected=true};
-    const InputKey keys[] = {InputKeyUp, InputKeyDown, InputKeyLeft, InputKeyRight};
-    const uint16_t codes[] = {0x52, 0x51, 0x50, 0x4f};
-    for(unsigned i=0;i<4;i++) {
-        InputEvent event = {.key=keys[i], .type=InputTypePress};
-        unsigned before=pulses;
-        assert(remote_handle_input(&app, &event));
-        if(pulses!=before+1 || last_code!=codes[i] || last_consumer) {
-            fprintf(stderr, "Direction failed: key=%u expected HID=%u\n", keys[i],codes[i]);
-            return 1;
-        }
-        event.type=InputTypeShort;
-        remote_handle_input(&app,&event);
-        assert(pulses==before+1); /* no duplicate on release */
-        event.type=InputTypeRepeat;
-        remote_handle_input(&app,&event);
-        assert(pulses==before+2 && last_code==codes[i]);
-    }
-    InputEvent event={.key=InputKeyOk,.type=InputTypePress};
-    unsigned before=pulses;
-    remote_handle_input(&app,&event);
-    assert(pulses==before); /* wait to distinguish short from long */
-    event.type=InputTypeShort;
-    remote_handle_input(&app,&event);
-    assert(pulses==before+1 && last_code==0x28 && !last_consumer);
-    event.type=InputTypeLong;
-    remote_handle_input(&app,&event);
-    assert(pulses==before+1 && app.screen.actions); /* menu only, never select */
-    event.type=InputTypeRepeat;
-    remote_handle_input(&app,&event);
-    assert(pulses==before+1); /* held OK cannot activate a menu item */
-    event.type=InputTypeShort;
-    remote_handle_input(&app,&event);
-    assert(pulses==before+2 && last_code==0xcd && last_consumer && !app.screen.actions);
-    event.type=InputTypeLong; remote_handle_input(&app,&event);
-    event.key=InputKeyDown; event.type=InputTypePress; remote_handle_input(&app,&event);
-    event.key=InputKeyOk; event.type=InputTypeShort; remote_handle_input(&app,&event);
-    assert(pulses==before+3 && last_code==0x28 && !last_consumer);
-    event.type=InputTypeLong; remote_handle_input(&app,&event);
-    event.key=InputKeyDown; event.type=InputTypePress;
-    remote_handle_input(&app,&event); remote_handle_input(&app,&event);
-    assert(pulses==before+3 && app.screen.action==2); /* selection cannot send Power */
-    event.key=InputKeyOk; event.type=InputTypeShort; remote_handle_input(&app,&event);
-    assert(pulses==before+4 && last_code==0x30 && last_consumer && !app.screen.actions);
-    event.type=InputTypeRepeat; remote_handle_input(&app,&event);
-    assert(pulses==before+4); /* Power exactly once */
-    event.type=InputTypeLong; remote_handle_input(&app,&event);
-    event.key=InputKeyBack; event.type=InputTypeShort; remote_handle_input(&app,&event);
-    assert(pulses==before+4 && !app.screen.actions); /* cancel sends nothing */
-    event.key=InputKeyBack; event.type=InputTypeShort;
-    remote_handle_input(&app,&event);
-    assert(last_code==0x29 && !last_consumer);
-    before=pulses;
-    event.type=InputTypeLong;
-    assert(remote_handle_input(&app,&event)); /* long Back must keep the app open */
-    assert(pulses==before+1 && last_code==0x30 && last_consumer);
-    event.type=InputTypeRepeat;
-    remote_handle_input(&app,&event);
-    event.type=InputTypeRelease;
-    remote_handle_input(&app,&event);
-    assert(pulses==before+1); /* no repeat Power or Escape after a hold */
-    event.key=InputKeyOk; event.type=InputTypeLong;
-    remote_handle_input(&app,&event);
-    event.key=InputKeyBack; event.type=InputTypeLong;
-    assert(remote_handle_input(&app,&event) && pulses==before+2 && last_code==0x30);
-    event.type=InputTypeShort;
-    remote_handle_input(&app,&event); /* dismiss Actions, no TV command */
-    before=pulses;
-    app.screen.connected=false;
-    event.key=InputKeyLeft; event.type=InputTypePress;
-    assert(remote_handle_input(&app,&event) && pulses==before);
-    event.key=InputKeyBack; event.type=InputTypeLong;
-    assert(remote_handle_input(&app,&event) && pulses==before);
-    /* Exit remains reachable while disconnected or when profile startup failed. */
-    app.profile=0;
-    event.key=InputKeyOk; event.type=InputTypeLong;
-    assert(remote_handle_input(&app,&event) && app.screen.actions);
-    event.key=InputKeyUp; event.type=InputTypePress;
-    remote_handle_input(&app,&event);
-    assert(app.screen.action==3);
-    event.key=InputKeyOk; event.type=InputTypeShort;
-    assert(!remote_handle_input(&app,&event) && pulses==before);
-    /* Connected Exit must also send no command. */
-    app.profile=(void*)1; app.screen.connected=true;
-    app.screen.actions=true; app.screen.action=3;
-    assert(!remote_handle_input(&app,&event) && pulses==before);
-    puts("PASS: directions, repeat, Back hold Power without exit, no repeat Power, menu Exit online/offline");
+static bool input(Remote* app, InputKey key, InputType type) {
+    InputEvent e={.key=key,.type=type}; return remote_handle_input(app,&e);
 }
+static bool choose(Remote* app, unsigned index) {
+    if(app->screen.actions) assert(input(app,InputKeyBack,InputTypeShort));
+    assert(input(app,InputKeyOk,InputTypeLong));
+    assert(app->screen.actions && app->screen.action==0);
+    for(unsigned i=0;i<index;i++) assert(input(app,InputKeyDown,InputTypePress));
+    return input(app,InputKeyOk,InputTypeShort);
+}
+int main(void) {
+    Remote app={.profile=(void*)1,.screen.connected=true};
+    const InputKey keys[]={InputKeyUp,InputKeyDown,InputKeyLeft,InputKeyRight};
+    const uint16_t codes[]={0x52,0x51,0x50,0x4f};
+    for(unsigned i=0;i<4;i++) {
+        unsigned before=pulses;
+        assert(input(&app,keys[i],InputTypePress));
+        assert(pulses==before+1 && last_code==codes[i] && !last_consumer);
+        input(&app,keys[i],InputTypeShort);
+        input(&app,keys[i],InputTypeRelease);
+        assert(pulses==before+1);
+        input(&app,keys[i],InputTypeRepeat);
+        assert(pulses==before+2);
+    }
+    input(&app,InputKeyOk,InputTypeShort);
+    assert(last_code==0x28 && !last_consumer);
+    input(&app,InputKeyBack,InputTypeShort);
+    assert(last_code==0x29 && !last_consumer);
+    unsigned before=pulses;
+    input(&app,InputKeyBack,InputTypeLong);
+    assert(pulses==before+1 && last_code==0x30 && last_consumer);
+    input(&app,InputKeyBack,InputTypeRepeat);
+    input(&app,InputKeyBack,InputTypeRelease);
+    assert(pulses==before+1);
+    assert(choose(&app,1) && last_code==0xcd && last_consumer);
+    assert(choose(&app,2) && last_code==0x28 && !last_consumer);
+    assert(choose(&app,3) && last_code==0x30 && last_consumer);
+    before=pulses;
+    input(&app,InputKeyOk,InputTypeRepeat);
+    assert(pulses==before);
+    assert(choose(&app,0) && app.screen.volume && !app.screen.actions);
+    assert(pulses==before); /* entering Volume sends nothing */
+    for(unsigned i=0;i<2;i++) {
+        before=pulses;
+        input(&app,keys[i],InputTypePress);
+        assert(pulses==before+1 && last_code==(i ? 0xea : 0xe9) && last_consumer);
+        input(&app,keys[i],InputTypeShort);
+        input(&app,keys[i],InputTypeRelease);
+        assert(pulses==before+1);
+        input(&app,keys[i],InputTypeRepeat);
+        assert(pulses==before+2);
+    }
+    before=pulses;
+    input(&app,InputKeyLeft,InputTypePress);
+    input(&app,InputKeyRight,InputTypeRepeat);
+    assert(pulses==before); /* no accidental Apple TV navigation in Volume */
+    input(&app,InputKeyOk,InputTypePress);
+    assert(pulses==before);
+    input(&app,InputKeyOk,InputTypeShort);
+    assert(pulses==before+1 && last_code==0xe2 && last_consumer);
+    input(&app,InputKeyOk,InputTypeRepeat);
+    input(&app,InputKeyOk,InputTypeRelease);
+    assert(pulses==before+1); /* mute toggles exactly once */
+    input(&app,InputKeyOk,InputTypeLong);
+    assert(app.screen.actions && pulses==before+1); /* long OK does not mute */
+    input(&app,InputKeyBack,InputTypeShort);
+    assert(!app.screen.actions && app.screen.volume && pulses==before+1);
+    input(&app,InputKeyBack,InputTypeLong);
+    assert(app.screen.volume && pulses==before+2 && last_code==0x30);
+    before=pulses;
+    input(&app,InputKeyBack,InputTypeShort);
+    assert(!app.screen.volume && pulses==before); /* local return, not Escape */
+    input(&app,InputKeyUp,InputTypePress);
+    assert(last_code==0x52 && !last_consumer); /* navigation restored */
+    assert(choose(&app,0));
+    app.screen.connected=false;
+    before=pulses;
+    input(&app,InputKeyUp,InputTypePress);
+    input(&app,InputKeyDown,InputTypeRepeat);
+    input(&app,InputKeyOk,InputTypeShort);
+    input(&app,InputKeyBack,InputTypeLong);
+    assert(pulses==before);
+    input(&app,InputKeyBack,InputTypeShort);
+    assert(!app.screen.volume && pulses==before);
+    app.profile=0;
+    assert(!choose(&app,4) && pulses==before); /* offline Exit */
+    app.profile=(void*)1; app.screen.connected=true;
+    assert(!choose(&app,4) && pulses==before); /* online Exit */
+    input(&app,InputKeyOk,InputTypeLong);
+    input(&app,InputKeyUp,InputTypePress);
+    assert(app.screen.action==4); /* menu wraps across five entries */
+    input(&app,InputKeyBack,InputTypeShort);
+    assert(pulses==before && !app.screen.actions);
+    puts("PASS: navigation, volume repeat, single mute, mode changes, Power retained, offline handling, menu Exit");
+}
+
 """
 with tempfile.TemporaryDirectory(prefix="flipper-controls-") as tmp:
     test = Path(tmp) / "controls.c"

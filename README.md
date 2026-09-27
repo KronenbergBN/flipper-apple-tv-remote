@@ -6,6 +6,8 @@ A custom Apple TV remote for Flipper Zero, developed with OpenAI Codex. Connects
 
 Independent project, not an official Apple or Flipper Devices app.
 
+**Development branch: v1.5 volume controls.** The latest stable release is v1.4.0. Volume/mute is implemented and awaiting the owner's Apple TV / AirPlay speaker test.
+
 [Download the app](https://github.com/KronenbergBN/flipper-apple-tv-remote/releases/latest) · [Source code](https://github.com/KronenbergBN/flipper-apple-tv-remote)
 
 ![Apple TV remote on Flipper Zero: connected, with directional controls and an Actions menu](docs/images/apple-tv-remote-v1.4.png)
@@ -29,11 +31,35 @@ The app shares the official Bluetooth Remote app's local pairing store. Existing
 | Hold Back | Send a two-second Power press; keep the app open |
 | Actions > Exit app | Exit locally, including while disconnected |
 
-Actions: Play / Pause, Wake (OK), Power hold, Exit app. Choose with Up/Down and execute with short OK. Power sends a two-second Bluetooth HID Power press.
+Actions: Volume / Mute, Play / Pause, Wake (OK), Power hold, Exit app. Choose with Up/Down and execute with short OK. Power sends a two-second Bluetooth HID Power press.
+
+## Volume mode (v1.5 test build)
+
+![Volume mode on the connected Flipper Zero](docs/images/apple-tv-volume-v1.5.png)
+
+Hold OK, then press OK briefly to enter **Volume / Mute**, the first Actions item.
+
+| Button in Volume mode | Function |
+| --- | --- |
+| Up / Down | Volume up / down; hold to repeat |
+| Short OK | Mute / unmute |
+| Short Back | Return to navigation without sending a Back command |
+| Hold Back | Existing two-second Power command |
+| Hold OK | Actions menu |
+
+The app sends Bluetooth HID consumer Volume Increment (0xE9), Volume Decrement
+(0xEA), and Mute (0xE2) to Apple TV. It does not pair directly with a HomePod
+or change the selected audio output. Whether tvOS forwards these inputs to the
+configured HomePod/AirPlay output needs confirmation on the owner's setup.
+No IR transmitter or television-specific volume codes are used.
+
+Navigation, Power and Exit regression tests pass together with new checks for
+volume repeat, exactly one mute per short press, local mode changes, and no
+commands while disconnected. Build, SDK imports and lint passed. The installed file was read back byte-for-byte and the connected Volume screen was verified in qFlipper.
 
 ## Verified behavior and limits
 
-Tested by the owner on **Apple TV 4K, model A2843 (128 GB), tvOS 26.6**, with **Flipper Zero official firmware 1.4.3**. The owner confirmed power on/off with version 1.2 on 26 September 2026. Bluetooth pairing/reconnection, English UI and installation readback were verified. The fixed left button passes an actual-handler regression test; a separate physical retest of Left is still unreported. TV power behavior depends on the connected setup. Siri, microphone, touch gestures and volume are not implemented.
+Tested by the owner on **Apple TV 4K, model A2843 (128 GB), tvOS 26.6**, with **Flipper Zero official firmware 1.4.3**. The owner confirmed power on/off with version 1.2 on 26 September 2026. Bluetooth pairing/reconnection, English UI and installation readback were verified. The fixed left button passes an actual-handler regression test; a separate physical retest of Left is still unreported. TV power behavior depends on the connected setup. Siri, microphone, touch gestures are not implemented. Volume/mute commands in v1.5 are not yet device-verified.
 
 Version 1.4 fixes the Back-hold shortcut: it sends the existing two-second Power command instead of exiting to Favorites. Exit is now an explicit Actions entry, accessible even without a Bluetooth connection. The regression test reproduced the previous failure and passes with the fix; firmware build, SDK import checks and lint passed. Version 1.4 was installed and verified by byte-for-byte readback; on 27 September 2026, the owner confirmed that holding Back now powers off both the Apple TV and the connected TV while the Flipper app stays open. Compatibility with other firmware versions or Apple TV models is not established.
 

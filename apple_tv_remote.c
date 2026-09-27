@@ -22,6 +22,7 @@ typedef struct {
     bool failed;
     bool highlight;
     bool actions;
+    bool volume;
     uint8_t action;
     InputKey last_key;
 } RemoteScreen;
@@ -90,9 +91,11 @@ static void remote_draw(Canvas* canvas, void* context) {
     canvas_draw_line(canvas, 0, 13, 127, 13);
 
     if(screen.actions) {
-        const char* labels[] = {"Play / Pause", "Wake (OK)", "Power hold", "Exit app"};
-        for(uint8_t i = 0; i < 4; i++) {
-            int y = 16 + i * 10;
+        const char* labels[] = {
+            "Volume / Mute", "Play / Pause", "Wake (OK)", "Power hold", "Exit app"};
+        uint8_t start = screen.action > 3 ? screen.action - 3 : 0;
+        for(uint8_t i = start; i < start + 4 && i < 5; i++) {
+            int y = 16 + (i - start) * 10;
             if(screen.action == i) {
                 canvas_draw_box(canvas, 1, y - 1, 126, 10);
                 canvas_set_color(canvas, ColorWhite);
@@ -107,6 +110,16 @@ static void remote_draw(Canvas* canvas, void* context) {
         canvas_draw_str(canvas, 2, 27, "Apple TV > Bluetooth");
         canvas_draw_str(canvas, 2, 39, "Select Control + name");
         canvas_draw_str(canvas, 2, 51, "Same code? Press OK");
+    } else if(screen.volume) {
+        remote_button(
+            canvas, 3, 16, InputKeyUp, screen.highlight && screen.last_key == InputKeyUp);
+        remote_button(
+            canvas, 3, 29, InputKeyDown, screen.highlight && screen.last_key == InputKeyDown);
+        remote_button(
+            canvas, 3, 42, InputKeyOk, screen.highlight && screen.last_key == InputKeyOk);
+        canvas_draw_str(canvas, 29, 25, "Volume +");
+        canvas_draw_str(canvas, 29, 38, "Volume -");
+        canvas_draw_str(canvas, 29, 51, "Mute / Unmute");
     } else {
         remote_button(
             canvas, 23, 16, InputKeyUp, screen.highlight && screen.last_key == InputKeyUp);
@@ -130,6 +143,7 @@ static void remote_draw(Canvas* canvas, void* context) {
         AlignCenter,
         AlignBottom,
         screen.actions   ? "Back: cancel  OK: run" :
+        screen.volume    ? "Back: Remote  Hold: Power" :
         screen.connected ? "Hold Back: Power" :
                            "Hold OK: Actions / Exit");
 }
@@ -168,6 +182,7 @@ static bool remote_handle_input(Remote* app, const InputEvent* event) {
     furi_mutex_acquire(app->lock, FuriWaitForever);
     bool connected = app->screen.connected;
     bool actions = app->screen.actions;
+    bool volume = app->screen.volume;
     uint8_t action = app->screen.action;
     furi_mutex_release(app->lock);
     /* Hold Back is the owner's Power shortcut, never a local app exit.
@@ -191,7 +206,7 @@ static bool remote_handle_input(Remote* app, const InputEvent* event) {
         if((event->key == InputKeyUp || event->key == InputKeyDown) &&
            (event->type == InputTypePress || event->type == InputTypeRepeat)) {
             furi_mutex_acquire(app->lock, FuriWaitForever);
-            app->screen.action = (action + (event->key == InputKeyDown ? 1 : 3)) % 4;
+            app->screen.action = (action + (event->key == InputKeyDown ? 1 : 4)) % 5;
             furi_mutex_release(app->lock);
             view_port_update(app->view_port);
             return true;
@@ -204,40 +219,67 @@ static bool remote_handle_input(Remote* app, const InputEvent* event) {
         furi_mutex_release(app->lock);
         view_port_update(app->view_port);
         if(event->key == InputKeyBack) return true;
-        if(action == 3) return false; /* Explicit Exit works even without Bluetooth. */
+        if(action == 4) return false; /* Explicit Exit works even without Bluetooth. */
+        if(action == 0) {
+            furi_mutex_acquire(app->lock, FuriWaitForever);
+            app->screen.volume = true;
+            app->screen.highlight = false;
+            furi_mutex_release(app->lock);
+            view_port_update(app->view_port);
+            return true;
+        }
         if(!connected || !app->profile) return true;
-        code = action == 0 ? HID_CONSUMER_PLAY_PAUSE :
-               action == 1 ? HID_KEYBOARD_RETURN :
+        code = action == 1 ? HID_CONSUMER_PLAY_PAUSE :
+               action == 2 ? HID_KEYBOARD_RETURN :
                              HID_CONSUMER_POWER;
-        consumer = action != 1;
+        consumer = action != 2;
         /* Power confirmed on the owner's setup; compatibility with others may differ. */
         remote_pulse(app, code, consumer);
         return true;
     }
+    if(volume && event->key == InputKeyBack && event->type == InputTypeShort) {
+        furi_mutex_acquire(app->lock, FuriWaitForever);
+        app->screen.volume = false;
+        app->screen.highlight = false;
+        furi_mutex_release(app->lock);
+        view_port_update(app->view_port);
+        return true;
+    }
     if(!connected || !app->profile) return true;
-    const bool direction = event->key == InputKeyUp || event->key == InputKeyDown ||
-                           event->key == InputKeyLeft || event->key == InputKeyRight;
-    if(direction && (event->type == InputTypePress || event->type == InputTypeRepeat)) {
-        switch(event->key) {
-        case InputKeyUp:
-            code = HID_KEYBOARD_UP_ARROW;
-            break;
-        case InputKeyDown:
-            code = HID_KEYBOARD_DOWN_ARROW;
-            break;
-        case InputKeyLeft:
-            code = HID_KEYBOARD_LEFT_ARROW;
-            break;
-        case InputKeyRight:
-            code = HID_KEYBOARD_RIGHT_ARROW;
-            break;
-        default:
-            break;
+    if(volume) {
+        consumer = true;
+        if((event->type == InputTypePress || event->type == InputTypeRepeat) &&
+           (event->key == InputKeyUp || event->key == InputKeyDown)) {
+            code = event->key == InputKeyUp ? HID_CONSUMER_VOLUME_INCREMENT :
+                                              HID_CONSUMER_VOLUME_DECREMENT;
+        } else if(event->key == InputKeyOk && event->type == InputTypeShort) {
+            code = HID_CONSUMER_MUTE;
         }
-    } else if(event->key == InputKeyOk && event->type == InputTypeShort) {
-        code = HID_KEYBOARD_RETURN;
-    } else if(event->key == InputKeyBack && event->type == InputTypeShort) {
-        code = HID_KEYBOARD_ESCAPE;
+    } else {
+        const bool direction = event->key == InputKeyUp || event->key == InputKeyDown ||
+                               event->key == InputKeyLeft || event->key == InputKeyRight;
+        if(direction && (event->type == InputTypePress || event->type == InputTypeRepeat)) {
+            switch(event->key) {
+            case InputKeyUp:
+                code = HID_KEYBOARD_UP_ARROW;
+                break;
+            case InputKeyDown:
+                code = HID_KEYBOARD_DOWN_ARROW;
+                break;
+            case InputKeyLeft:
+                code = HID_KEYBOARD_LEFT_ARROW;
+                break;
+            case InputKeyRight:
+                code = HID_KEYBOARD_RIGHT_ARROW;
+                break;
+            default:
+                break;
+            }
+        } else if(event->key == InputKeyOk && event->type == InputTypeShort) {
+            code = HID_KEYBOARD_RETURN;
+        } else if(event->key == InputKeyBack && event->type == InputTypeShort) {
+            code = HID_KEYBOARD_ESCAPE;
+        }
     }
 
     if(code && remote_pulse(app, code, consumer)) {
