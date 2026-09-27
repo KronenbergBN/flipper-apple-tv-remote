@@ -102,11 +102,39 @@ int main(void) {
     assert(last_code==0x29 && !last_consumer);
     before=pulses;
     event.type=InputTypeLong;
-    assert(!remote_handle_input(&app,&event) && pulses==before);
+    assert(remote_handle_input(&app,&event)); /* long Back must keep the app open */
+    assert(pulses==before+1 && last_code==0x30 && last_consumer);
+    event.type=InputTypeRepeat;
+    remote_handle_input(&app,&event);
+    event.type=InputTypeRelease;
+    remote_handle_input(&app,&event);
+    assert(pulses==before+1); /* no repeat Power or Escape after a hold */
+    event.key=InputKeyOk; event.type=InputTypeLong;
+    remote_handle_input(&app,&event);
+    event.key=InputKeyBack; event.type=InputTypeLong;
+    assert(remote_handle_input(&app,&event) && pulses==before+2 && last_code==0x30);
+    event.type=InputTypeShort;
+    remote_handle_input(&app,&event); /* dismiss Actions, no TV command */
+    before=pulses;
     app.screen.connected=false;
     event.key=InputKeyLeft; event.type=InputTypePress;
     assert(remote_handle_input(&app,&event) && pulses==before);
-    puts("PASS: four directions, repeat, short/long actions, exit, disconnected input");
+    event.key=InputKeyBack; event.type=InputTypeLong;
+    assert(remote_handle_input(&app,&event) && pulses==before);
+    /* Exit remains reachable while disconnected or when profile startup failed. */
+    app.profile=0;
+    event.key=InputKeyOk; event.type=InputTypeLong;
+    assert(remote_handle_input(&app,&event) && app.screen.actions);
+    event.key=InputKeyUp; event.type=InputTypePress;
+    remote_handle_input(&app,&event);
+    assert(app.screen.action==3);
+    event.key=InputKeyOk; event.type=InputTypeShort;
+    assert(!remote_handle_input(&app,&event) && pulses==before);
+    /* Connected Exit must also send no command. */
+    app.profile=(void*)1; app.screen.connected=true;
+    app.screen.actions=true; app.screen.action=3;
+    assert(!remote_handle_input(&app,&event) && pulses==before);
+    puts("PASS: directions, repeat, Back hold Power without exit, no repeat Power, menu Exit online/offline");
 }
 """
 with tempfile.TemporaryDirectory(prefix="flipper-controls-") as tmp:

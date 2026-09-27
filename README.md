@@ -8,7 +8,7 @@ Independent project, not an official Apple or Flipper Devices app.
 
 [Download the app](https://github.com/KronenbergBN/flipper-apple-tv-remote/releases/latest) · [Source code](https://github.com/KronenbergBN/flipper-apple-tv-remote)
 
-![Apple TV remote on Flipper Zero: connected, with directional controls and an Actions menu](docs/images/apple-tv-remote.png)
+![Apple TV remote on Flipper Zero: connected, with directional controls and an Actions menu](docs/images/apple-tv-remote-v1.4.png)
 
 *Screenshot from the app running on a real Flipper Zero.*
 
@@ -26,15 +26,16 @@ The app shares the official Bluetooth Remote app's local pairing store. Existing
 | Short OK | Select / wake |
 | Hold OK | Actions menu |
 | Short Back | Back/menu; cancel in Actions |
-| Hold Back | Exit app |
+| Hold Back | Send a two-second Power press; keep the app open |
+| Actions > Exit app | Exit locally, including while disconnected |
 
-Actions: Play / Pause, Wake (OK), Power hold, Back to remote. Choose with Up/Down and execute with short OK. Power sends a two-second Bluetooth HID Power press.
+Actions: Play / Pause, Wake (OK), Power hold, Exit app. Choose with Up/Down and execute with short OK. Power sends a two-second Bluetooth HID Power press.
 
 ## Verified behavior and limits
 
 Tested by the owner on **Apple TV 4K, model A2843 (128 GB), tvOS 26.6**, with **Flipper Zero official firmware 1.4.3**. The owner confirmed power on/off with version 1.2 on 26 September 2026. Bluetooth pairing/reconnection, English UI and installation readback were verified. The fixed left button passes an actual-handler regression test; a separate physical retest of Left is still unreported. TV power behavior depends on the connected setup. Siri, microphone, touch gestures and volume are not implemented.
 
-Version 1.3 generalizes the pairing label and removes the Power action's test label; transmitted commands are unchanged. This release build has not been installed on the owner's Flipper. Compatibility with other firmware versions or Apple TV models is not established.
+Version 1.4 fixes the Back-hold shortcut: it sends the existing two-second Power command instead of exiting to Favorites. Exit is now an explicit Actions entry, accessible even without a Bluetooth connection. The regression test reproduced the previous failure and passes with the fix; firmware build, SDK import checks and lint passed. Version 1.4 was installed and verified by byte-for-byte readback; on 27 September 2026, the owner confirmed that holding Back now powers off both the Apple TV and the connected TV while the Flipper app stays open. Compatibility with other firmware versions or Apple TV models is not established.
 
 ## Build
 

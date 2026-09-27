@@ -90,7 +90,7 @@ static void remote_draw(Canvas* canvas, void* context) {
     canvas_draw_line(canvas, 0, 13, 127, 13);
 
     if(screen.actions) {
-        const char* labels[] = {"Play / Pause", "Wake (OK)", "Power hold", "Back to remote"};
+        const char* labels[] = {"Play / Pause", "Wake (OK)", "Power hold", "Exit app"};
         for(uint8_t i = 0; i < 4; i++) {
             int y = 16 + i * 10;
             if(screen.action == i) {
@@ -129,7 +129,9 @@ static void remote_draw(Canvas* canvas, void* context) {
         63,
         AlignCenter,
         AlignBottom,
-        screen.actions ? "Back: cancel  Hold: exit" : "Hold Back: Exit app");
+        screen.actions   ? "Back: cancel  OK: run" :
+        screen.connected ? "Hold Back: Power" :
+                           "Hold OK: Actions / Exit");
 }
 
 static void remote_input(InputEvent* event, void* context) {
@@ -163,14 +165,17 @@ static bool remote_pulse(Remote* app, uint16_t code, bool consumer) {
 }
 
 static bool remote_handle_input(Remote* app, const InputEvent* event) {
-    if(event->key == InputKeyBack && event->type == InputTypeLong) return false;
-
     furi_mutex_acquire(app->lock, FuriWaitForever);
     bool connected = app->screen.connected;
     bool actions = app->screen.actions;
     uint8_t action = app->screen.action;
     furi_mutex_release(app->lock);
-    if(!connected || !app->profile) return true;
+    /* Hold Back is the owner's Power shortcut, never a local app exit.
+     * Repeat and release events do not send an additional command. */
+    if(event->key == InputKeyBack && event->type == InputTypeLong) {
+        if(connected && app->profile) remote_pulse(app, HID_CONSUMER_POWER, true);
+        return true;
+    }
 
     uint16_t code = 0;
     bool consumer = false;
@@ -198,7 +203,9 @@ static bool remote_handle_input(Remote* app, const InputEvent* event) {
         app->screen.actions = false;
         furi_mutex_release(app->lock);
         view_port_update(app->view_port);
-        if(event->key == InputKeyBack || action == 3) return true;
+        if(event->key == InputKeyBack) return true;
+        if(action == 3) return false; /* Explicit Exit works even without Bluetooth. */
+        if(!connected || !app->profile) return true;
         code = action == 0 ? HID_CONSUMER_PLAY_PAUSE :
                action == 1 ? HID_KEYBOARD_RETURN :
                              HID_CONSUMER_POWER;
@@ -207,6 +214,7 @@ static bool remote_handle_input(Remote* app, const InputEvent* event) {
         remote_pulse(app, code, consumer);
         return true;
     }
+    if(!connected || !app->profile) return true;
     const bool direction = event->key == InputKeyUp || event->key == InputKeyDown ||
                            event->key == InputKeyLeft || event->key == InputKeyRight;
     if(direction && (event->type == InputTypePress || event->type == InputTypeRepeat)) {
