@@ -140,6 +140,25 @@ int main(void) {
     assert(app.screen.action==4); /* menu wraps across five entries */
     input(&app,InputKeyBack,InputTypeShort);
     assert(pulses==before && !app.screen.actions);
+    /* A disconnected main screen must not trap Back; long Back always exits
+     * locally in Actions, even while connected, without sending Power. */
+    app.screen.connected=false;
+    app.screen.volume=false;
+    assert(!input(&app,InputKeyBack,InputTypeShort));
+    assert(!input(&app,InputKeyBack,InputTypeLong));
+    app.profile=0;
+    assert(!input(&app,InputKeyBack,InputTypeShort));
+    assert(!input(&app,InputKeyBack,InputTypeLong));
+    for(unsigned online=0; online<2; online++) {
+        app.profile=online ? (void*)1 : 0;
+        app.screen.connected=online;
+        input(&app,InputKeyOk,InputTypeLong);
+        before=pulses;
+        assert(!input(&app,InputKeyBack,InputTypeLong));
+        assert(pulses==before); /* local Exit never powers off the TV */
+        assert(input(&app,InputKeyBack,InputTypeShort));
+        assert(!app.screen.actions && pulses==before); /* cancel still works */
+    }
     puts("PASS: navigation, volume repeat, single mute, mode changes, Power retained, offline handling, menu Exit");
 }
 

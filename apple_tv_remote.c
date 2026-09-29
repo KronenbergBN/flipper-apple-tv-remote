@@ -142,10 +142,11 @@ static void remote_draw(Canvas* canvas, void* context) {
         63,
         AlignCenter,
         AlignBottom,
-        screen.actions   ? "Back: cancel  OK: run" :
-        screen.volume    ? "Back: Remote  Hold: Power" :
+        screen.actions   ? "Back: cancel  Hold: Exit" :
+        screen.volume    ? (screen.connected ? "Back: Remote  Hold: Power" :
+                                               "Back: Remote  Hold: Exit") :
         screen.connected ? "Hold Back: Power" :
-                           "Hold OK: Actions / Exit");
+                           "Back: Exit  Hold OK: Actions");
 }
 
 static void remote_input(InputEvent* event, void* context) {
@@ -185,10 +186,11 @@ static bool remote_handle_input(Remote* app, const InputEvent* event) {
     bool volume = app->screen.volume;
     uint8_t action = app->screen.action;
     furi_mutex_release(app->lock);
-    /* Hold Back is the owner's Power shortcut, never a local app exit.
-     * Repeat and release events do not send an additional command. */
+    /* In Actions, or without a usable connection, Hold Back exits locally.
+     * The connected remote and volume screens retain the Power shortcut. */
     if(event->key == InputKeyBack && event->type == InputTypeLong) {
-        if(connected && app->profile) remote_pulse(app, HID_CONSUMER_POWER, true);
+        if(actions || !connected || !app->profile) return false;
+        remote_pulse(app, HID_CONSUMER_POWER, true);
         return true;
     }
 
@@ -245,7 +247,9 @@ static bool remote_handle_input(Remote* app, const InputEvent* event) {
         view_port_update(app->view_port);
         return true;
     }
-    if(!connected || !app->profile) return true;
+    if(!connected || !app->profile) {
+        return !(event->key == InputKeyBack && event->type == InputTypeShort);
+    }
     if(volume) {
         consumer = true;
         if((event->type == InputTypePress || event->type == InputTypeRepeat) &&
